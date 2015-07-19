@@ -1,0 +1,7 @@
+[program:devpi-server]
+command= {{ venv_path }}/bin/devpi-server --port {{ devpi_internal_port }} --serverdir {{ devpi_server_path }}
+user = {{ devpi_user }}
+priority = 999
+startsecs = 5
+redirect_stderr = True
+autostart = True

@@ -1,0 +1,75 @@
+---
+- hosts: devpiservers
+  vars:
+    devpi_user: devpi
+    devpi_home_path: /home/devpi
+    devpi_internal_port: 8000
+    devpi_server_path: "/var/devpiserver"
+    venv_path: "{{ devpi_home_path }}/devpi-env"
+  become: yes
+  become_method: sudo
+  become_user: root
+  tasks:
+    - name: install system-wide requirements
+      apt: name={{ item }} update_cache='yes'
+      with_items:
+        - nginx
+        - python-dev
+        - python-pip
+        - supervisor
+
+    - name: install virtualenv package system-wide
+      pip: name={{ item }}
+      with_items:
+        - virtualenv
+
+    - name: create devpi user
+      user: name={{ devpi_user }}
+            home={{ devpi_home_path }}
+            comment="Devpi Service User"
+
+    - name: create devpi server directory
+      file: dest={{ devpi_server_path }}
+            state=directory
+            owner={{ devpi_user }}
+
+    - name: ensure virtualenv created
+      stat: path={{ venv_path }}
+      register: check_venv
+
+    - name: create project virtualenv
+      shell: virtualenv {{ venv_path }}
+      when: check_venv.stat.exists == false
+      become: yes
+      become_user: "{{ devpi_user }}"
+
+    - name: setup devpi
+      pip: name={{ item }} virtualenv={{ venv_path }}
+      with_items:
+        - devpi-server
+        - devpi-web
+      become: yes
+      become_user: "{{ devpi_user }}"
+
+    - name: copy supervisor config
+      template: src=conf_templates/supervisor-devpi.j2
+                dest=/etc/supervisor/conf.d/defpi.conf
+
+    - name: reload supervisor configuration
+      service: name=supervisor state=restarted
+
+    - name: copy nginx config
+      template: src=conf_templates/nginx-devpi.j2
+                dest=/etc/nginx/sites-available/devpi
+     
+    - name: enable nginx config
+      file: src=/etc/nginx/sites-available/devpi
+            dest=/etc/nginx/sites-enabled/devpi
+            state=link
+
+    - name: disable default nginx site
+      file: dest=/etc/nginx/sites-enabled/default
+            state=absent
+
+    - name: reload nginx config
+      service: name=nginx state=restarted
